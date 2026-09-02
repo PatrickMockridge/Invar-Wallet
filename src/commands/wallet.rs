@@ -37,6 +37,11 @@ impl Plugin for WalletPlugin {
                 help: "show sync status",
                 handler: sync,
             },
+            Command {
+                name: "send",
+                help: "send native DRKW: /send <amount> <recipient-address>",
+                handler: send,
+            },
         ]
     }
 }
@@ -123,5 +128,33 @@ fn sync(ctx: &mut CommandContext, _args: &[String]) -> CommandResult {
     ctx.log(format!("peers: {peers}"));
     ctx.log(format!("p2p: {p2p}"));
     ctx.log(format!("synced: {synced}"));
+    Ok(())
+}
+
+fn send(ctx: &mut CommandContext, args: &[String]) -> CommandResult {
+    let (amount, recipient) = match (args.first(), args.get(1)) {
+        (Some(a), Some(r)) => match a.parse::<u64>() {
+            Ok(amount) => (amount, r.clone()),
+            Err(e) => {
+                ctx.log(format!("invalid amount: {e}"));
+                return Ok(());
+            }
+        },
+        _ => {
+            ctx.log("usage: /send <amount> <recipient-address>");
+            return Ok(());
+        }
+    };
+
+    let result = ctx
+        .wallet
+        .as_ref()
+        .map(|w| w.send_native(amount, &recipient))
+        .unwrap_or_else(|| Err("wallet not open".to_string()));
+
+    match result {
+        Ok(txid) => ctx.log(format!("sent: {txid}")),
+        Err(e) => ctx.log(format!("error: {e}")),
+    }
     Ok(())
 }

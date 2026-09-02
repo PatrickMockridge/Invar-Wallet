@@ -22,6 +22,7 @@ enum NavScreen {
     Capabilities,
     Addresses,
     Contracts,
+    Send,
     Console,
 }
 
@@ -40,6 +41,8 @@ pub struct InvarApp {
     addresses: Vec<String>,
     contracts: Vec<ContractView>,
     contract_manifests: Vec<ContractManifestView>,
+    send_amount: String,
+    send_recipient: String,
 }
 
 impl InvarApp {
@@ -58,6 +61,8 @@ impl InvarApp {
             addresses: Vec::new(),
             contracts: Vec::new(),
             contract_manifests: Vec::new(),
+            send_amount: String::new(),
+            send_recipient: String::new(),
         }
     }
 
@@ -168,6 +173,40 @@ impl InvarApp {
             NavScreen::Contracts => {
                 crate::ui::contracts::show(ui, &self.contracts, &self.contract_manifests)
             }
+            NavScreen::Send => {
+                ui.heading("Send");
+                ui.label("Send native DRKW to a base58 address.");
+                ui.separator();
+                egui::Grid::new("send_grid")
+                    .num_columns(2)
+                    .spacing([12.0, 8.0])
+                    .show(ui, |ui| {
+                        ui.label("Amount");
+                        ui.text_edit_singleline(&mut self.send_amount);
+                        ui.end_row();
+                        ui.label("Recipient");
+                        ui.text_edit_singleline(&mut self.send_recipient);
+                        ui.end_row();
+                    });
+                ui.add_space(8.0);
+                if ui.button("Send").clicked() {
+                    let amount = self.send_amount.trim().parse::<u64>();
+                    let recipient = self.send_recipient.trim().to_string();
+                    let result = match amount {
+                        Ok(a) => self
+                            .wallet
+                            .as_ref()
+                            .map(|w| w.send_native(a, &recipient))
+                            .unwrap_or_else(|| Err("wallet not open".to_string())),
+                        Err(e) => Err(format!("invalid amount: {e}")),
+                    };
+                    let mut vm = self.vm.write();
+                    match result {
+                        Ok(txid) => vm.console_log.push(format!("sent: {txid}")),
+                        Err(e) => vm.console_log.push(format!("error: {e}")),
+                    }
+                }
+            }
             NavScreen::Console => {
                 ui.heading("Console");
                 ui.label("Type /help for commands. Run /verb <args> or a macro name.");
@@ -230,6 +269,7 @@ impl eframe::App for InvarApp {
                         );
                         ui.selectable_value(&mut self.nav, NavScreen::Addresses, "Addresses");
                         ui.selectable_value(&mut self.nav, NavScreen::Contracts, "Contracts");
+                        ui.selectable_value(&mut self.nav, NavScreen::Send, "Send");
                         ui.selectable_value(&mut self.nav, NavScreen::Console, "Console");
                     });
 

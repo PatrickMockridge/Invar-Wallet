@@ -298,6 +298,64 @@ impl WalletService {
         }
         Ok(out)
     }
+
+    /// Send native DRKW to a base58 address. Builds the ZK transfer, broadcasts it, and
+    /// marks the input capability PENDING. Returns the txid.
+    ///
+    /// NOTE: runs synchronously on the caller's thread (ZK proof generation is CPU-bound);
+    /// offloading to the background executor is a follow-up.
+    pub fn send_native(&self, amount: u64, recipient: &str) -> Result<String, String> {
+        let dww = self.dww.as_ref().ok_or("wallet not open")?;
+
+        let mut seed = [0u8; 32];
+        use rand::RngCore;
+        rand::rngs::OsRng.fill_bytes(&mut seed);
+
+        let r = smol::block_on(dww.read());
+        let tx = smol::block_on(r.build_native_transfer(amount, recipient, seed))
+            .map_err(|e| e.to_string())?;
+
+        let mut output = Vec::new();
+        let txid = smol::block_on(r.broadcast_tx(&tx, &mut output, false, None, None))
+            .map_err(|e| e.to_string())?;
+        // §4.2.1: a failure to mark caps PENDING leaves them double-spendable.
+        if let Err(e) = r.mark_tx_exercise(&tx, &mut output) {
+            tracing::warn!("mark_tx_exercise failed after broadcast: {e}");
+        }
+
+        Ok(txid)
+    }
+
+    /// Invoke a contract action generically (manifest-driven). Builds, broadcasts, and marks
+    /// the exercised capability PENDING. Returns the txid. `params` is an optional JSON object.
+    pub fn invoke_contract(
+        &self,
+        contract_id_or_name: &str,
+        function: &str,
+        params: Option<&str>,
+    ) -> Result<String, String> {
+        let dww = self.dww.as_ref().ok_or("wallet not open")?;
+
+        let r = smol::block_on(dww.read());
+        let tx = smol::block_on(r.invoke_contract(
+            contract_id_or_name,
+            function,
+            params,
+            vec![],
+            vec![],
+            None,
+        ))
+        .map_err(|e| e.to_string())?;
+
+        let mut output = Vec::new();
+        let txid = smol::block_on(r.broadcast_tx(&tx, &mut output, false, None, None))
+            .map_err(|e| e.to_string())?;
+        if let Err(e) = r.mark_tx_exercise(&tx, &mut output) {
+            tracing::warn!("mark_tx_exercise failed after broadcast: {e}");
+        }
+
+        Ok(txid)
+    }
 }
 
 /// Build a display-friendly view from a raw contract manifest.
@@ -507,5 +565,14 @@ mod tests {
         let m = w.contract_manifest(&cid).unwrap().expect("manifest by id");
         assert_eq!(m.name, "native_token");
         assert_eq!(m.trust, "GENESIS");
+    }
+
+    #[test]
+    fn send_native_errors_gracefully_without_caps() {
+        let cfg = test_config("send", vec![]);
+        let w = WalletService::open(&cfg, vm()).unwrap();
+        // No synced chain → no DRKW capabilities → the write path errors cleanly.
+        let result = w.send_native(100, "1invalid");
+        assert!(result.is_err(), "should error without DRKW capabilities");
     }
 }

@@ -22,6 +22,11 @@ impl Plugin for ContractsPlugin {
                 help: "show a contract's manifest: /contract <name|id>",
                 handler: contract,
             },
+            Command {
+                name: "invoke",
+                help: "invoke an action: /invoke <contract> <function> [--params <json>]",
+                handler: invoke,
+            },
         ]
     }
 }
@@ -68,6 +73,32 @@ fn contract(ctx: &mut CommandContext, args: &[String]) -> CommandResult {
             }
         }
         Ok(None) => ctx.log(format!("no manifest for {arg}")),
+        Err(e) => ctx.log(format!("error: {e}")),
+    }
+    Ok(())
+}
+
+fn invoke(ctx: &mut CommandContext, args: &[String]) -> CommandResult {
+    if args.len() < 2 {
+        ctx.log("usage: /invoke <contract> <function> [--params <json>]");
+        return Ok(());
+    }
+    let cid = args[0].clone();
+    let func = args[1].clone();
+    let params = if args.len() >= 4 && args[2] == "--params" {
+        Some(args[3..].join(" "))
+    } else {
+        None
+    };
+
+    let result = ctx
+        .wallet
+        .as_ref()
+        .map(|w| w.invoke_contract(&cid, &func, params.as_deref()))
+        .unwrap_or_else(|| Err("wallet not open".to_string()));
+
+    match result {
+        Ok(txid) => ctx.log(format!("invoked: {txid}")),
         Err(e) => ctx.log(format!("error: {e}")),
     }
     Ok(())
