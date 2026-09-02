@@ -1,0 +1,10 @@
+[book]
+authors = ["Invar contributors"]
+language = "en"
+src = "src"
+title = "The Invar Book"
+description = "Invar — a fork-able GUI wallet for DarkWow. The kernel invariants and what can be built around them."
+
+[output.html]
+default-theme = "navy"
+preferred-dark-theme = "navy"

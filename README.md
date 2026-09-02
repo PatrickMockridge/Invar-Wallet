@@ -82,6 +82,16 @@ Invoke as `/sweep` (or bare `sweep`) from the console.
 Edit `src/ui/theme.rs` (`apply`) — every screen inherits the palette. This is the single
 visual-customisation point.
 
+## Documentation
+
+The [Invar Book](docs/) (mdBook) defines the wallet's **kernel** (the invariant core) and
+everything that can be built around it, for developers and users:
+
+```bash
+cd docs && mdbook build   # → docs/book (HTML)
+mdbook serve docs         # live preview
+```
+
 ## License
 
 AGPL-3.0-only (inherited from the embedded `dwow_wallet` crate). See [LICENSE](LICENSE).
