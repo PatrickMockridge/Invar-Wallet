@@ -1,0 +1,51 @@
+[package]
+name = "invar"
+version = "0.1.0"
+edition = "2021"
+description = "Invar — a fork-able GUI wallet for DarkWow, inspired by Electrum"
+license = "AGPL-3.0-only"
+repository = "https://github.com/PatrickMockridge/Invar"
+homepage = "https://darkwow.org"
+keywords = ["darkfi", "darkwow", "wallet", "gui", "egui"]
+categories = ["cryptography::cryptocurrencies"]
+
+# DarkWow wallet core — vendored as a git submodule (see README). Path deps because
+# the crates are unpublished and `dwow_wallet` lives in a subdirectory (`bin/dww`),
+# which a Cargo `git` dependency cannot target.
+[dependencies]
+dwow_wallet = { path = "vendor/darkwow/bin/dww" }
+dwow-accounts = { path = "vendor/darkwow/crates/dwow-accounts" }
+dwow-sdk = { path = "vendor/darkwow/src/sdk", features = ["unsafe-display-secret"] }
+
+# GUI
+eframe = "0.36"
+egui = "0.36"
+egui_extras = "0.36"
+
+# Async runtime (mirrors the wallet CLI: smol executor on background threads)
+smol = "2"
+
+# Concurrency / messaging
+parking_lot = "0.12"
+crossbeam-channel = "0.5"
+
+# TLS (install the ring crypto provider before any P2P sync, as dwow_wallet's CLI does)
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "ring"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+# Config / serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.9"
+bs58 = "0.5"
+
+# The darkwow root's [patch.crates-io] is workspace-scoped and does NOT apply to Invar's
+# workspace, so it must be replicated here, pointing into the vendored tree. The halo2
+# fork is security-pinned (ZCash Orchard fix); the url fork adds P2P schemes.
+[patch.crates-io]
+halo2_proofs = { path = "vendor/darkwow/vendor/halo2/halo2_proofs" }
+halo2_gadgets = { path = "vendor/darkwow/vendor/halo2/halo2_gadgets" }
+url = { git = "https://github.com/darkrenaissance/rust-url", rev = "69fa32c0b1af622bf6e5d4aa28b36d1095565a6b" }
