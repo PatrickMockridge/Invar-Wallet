@@ -7,7 +7,25 @@ A fork-able, customisable GUI wallet for [DarkWow](https://darkwow.org), inspire
 > **Invar uses DarkWow's capability model, not a coin/UTXO model.** There are no "coins":
 > the wallet holds typed **capabilities** (compositions of primitives — `SecretKey`,
 > `Commitment`, `Nullifier`, `ContractId`, `FuncId`, `AssetId`, `MerkleNode` — covering an
-> action's **barbs**). See `doc/src/arch/wallet.md` in the DarkWow tree for the full model.
+> action's **barbs**). See `vendor/darkwow/doc/src/arch/wallet.md` for the full model.
+
+## Features
+
+- **Full-node wallet** — syncs the DarkWow chain over P2P and scans locally (no light client,
+  no index server).
+- **Capability browser** — your held capabilities (typed: primitives, barbs, spend-state,
+  trust tier), never flattened to "coins".
+- **Activity** — the capability spend-state lifecycle (Unspent → Pending → Processing → Spent).
+- **Contracts** — the nine genesis contracts and their on-chain manifests (functions,
+  capabilities, actions, parameters).
+- **Send & invoke** — native DRKW transfer and generic manifest-driven contract invocation,
+  built and broadcast off the UI thread.
+- **Addresses + QR** — your receiving address with a QR code.
+- **Console** — a `/verb` command surface (`/help`, `/balance`, `/caps`, `/sync`, `/send`,
+  `/contracts`, `/invoke`, …) that plugins and macros extend.
+- **Themes & plugins** — retheme in one file; add features as plugins without touching the
+  wallet core.
+- **Optional IRC** — an IRC client plugin (behind the `irc` cargo feature) for `darkirc`.
 
 ## Build
 
@@ -20,7 +38,14 @@ cd invar
 make -C vendor/darkwow contracts
 
 cargo build            # first build is large (halo2 / ZK deps)
+cargo test             # unit tests (wallet open, sync, verbs, manifests, …)
 cargo run              # launch the GUI
+```
+
+The IRC plugin is on by default; build without it:
+
+```bash
+cargo run --no-default-features
 ```
 
 ### Vendored DarkWow
@@ -37,6 +62,16 @@ For local development without git, you can instead symlink an existing checkout:
 
 ```bash
 ln -s /path/to/darkwow vendor/darkwow
+```
+
+## Documentation
+
+The [Invar Book](docs/) (mdBook) defines the wallet's **kernel** (the invariant core) and
+everything that can be built around it, for developers and users:
+
+```bash
+cd docs && mdbook build   # → docs/book (HTML)
+mdbook serve docs         # live preview
 ```
 
 ## Extending Invar
@@ -81,16 +116,6 @@ Invoke as `/sweep` (or bare `sweep`) from the console.
 
 Edit `src/ui/theme.rs` (`apply`) — every screen inherits the palette. This is the single
 visual-customisation point.
-
-## Documentation
-
-The [Invar Book](docs/) (mdBook) defines the wallet's **kernel** (the invariant core) and
-everything that can be built around it, for developers and users:
-
-```bash
-cd docs && mdbook build   # → docs/book (HTML)
-mdbook serve docs         # live preview
-```
 
 ## License
 
