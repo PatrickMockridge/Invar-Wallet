@@ -14,6 +14,11 @@ A fork-able, customisable GUI wallet for [DarkWow](https://darkwow.org), inspire
 ```bash
 git clone --recurse-submodules https://github.com/PatrickMockridge/Invar
 cd invar
+
+# DarkWow's ZK circuit binaries (.zk.bin) are generated, not committed.
+# Build them first (compiles the `zkas` compiler, then emits all proofs):
+make -C vendor/darkwow contracts
+
 cargo build            # first build is large (halo2 / ZK deps)
 cargo run              # launch the GUI
 ```

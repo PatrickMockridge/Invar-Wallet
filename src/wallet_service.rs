@@ -15,7 +15,7 @@ use dwow_wallet::DwwPtr;
 
 use crate::config::InvarConfig;
 use crate::contracts;
-use crate::viewmodel::{CapView, ContractView, ViewModel};
+use crate::viewmodel::{CapView, ContractManifestView, ContractView, ViewModel};
 
 pub struct WalletService {
     dww: Option<DwwPtr>,
@@ -275,6 +275,92 @@ impl WalletService {
             })
             .collect()
     }
+
+    /// Fetch one contract's on-chain manifest (name, functions, capabilities, actions,
+    /// parameters). Seeded for the genesis contracts at wallet init; discovered contracts
+    /// appear once their DeployV1 transaction is scanned.
+    pub fn contract_manifest(&self, contract_id: &str) -> Result<Option<ContractManifestView>, String> {
+        let dww = self.dww.as_ref().ok_or("wallet not open")?;
+        let manifest = smol::block_on(dww.read())
+            .get_contract_manifest(contract_id)
+            .map_err(|e| e.to_string())?;
+        Ok(manifest.map(|m| manifest_view(&m, contract_id)))
+    }
+
+    /// Manifests for all nine genesis contracts (empty until the wallet is initialized).
+    pub fn genesis_manifest_views(&self) -> Result<Vec<ContractManifestView>, String> {
+        let mut out = Vec::new();
+        for g in contracts::genesis_contracts() {
+            let cid = contracts::b58(g.id.to_bytes());
+            if let Some(v) = self.contract_manifest(&cid)? {
+                out.push(v);
+            }
+        }
+        Ok(out)
+    }
+}
+
+/// Build a display-friendly view from a raw contract manifest.
+fn manifest_view(
+    m: &dwow_sdk::manifest::ContractManifest,
+    contract_id: &str,
+) -> ContractManifestView {
+    let functions = m
+        .functions
+        .iter()
+        .map(|f| {
+            let proof = if f.requires_proof {
+                format!(", proof={}", f.proof_circuit.as_deref().unwrap_or("?"))
+            } else {
+                String::new()
+            };
+            format!("{} (0x{:02x}{proof})", f.name, f.code)
+        })
+        .collect();
+
+    let capabilities = m
+        .capabilities
+        .iter()
+        .map(|c| format!("{} (disc=0x{:02x})", c.name, c.discriminant))
+        .collect();
+
+    let actions = m
+        .actions
+        .iter()
+        .map(|a| {
+            let consumes = a.consumes.join(", ");
+            let produces = a
+                .produces
+                .iter()
+                .map(|p| p.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("{}: consumes=[{consumes}] produces=[{produces}]", a.function)
+        })
+        .collect();
+
+    let parameters = m
+        .parameters
+        .iter()
+        .flat_map(|p| {
+            p.fields.iter().map(|f| {
+                let opt = if f.optional { " (opt)" } else { "" };
+                format!("{}.{}: {}{opt}", p.function, f.name, f.param_type)
+            })
+        })
+        .collect();
+
+    ContractManifestView {
+        name: m.name.clone(),
+        category: m.category.clone(),
+        description: m.description.clone(),
+        version: m.version.clone(),
+        trust: contracts::trust_tier_b58(contract_id),
+        functions,
+        capabilities,
+        actions,
+        parameters,
+    }
 }
 
 /// Build a display-friendly view from a raw capability record.
@@ -399,5 +485,27 @@ mod tests {
         assert!(out.contains("native_token [GENESIS]"), "contracts verb: {out}");
         assert!(out.contains("chain height: 0"), "sync verb: {out}");
         assert!(out.contains("synced: false"), "sync verb: {out}");
+    }
+
+    #[test]
+    fn genesis_manifests_are_seeded() {
+        let cfg = test_config("manifests", vec![]);
+        let w = WalletService::open(&cfg, vm()).unwrap();
+
+        let manifests = w.genesis_manifest_views().unwrap();
+        assert_eq!(manifests.len(), 9, "all nine genesis manifests should be seeded");
+
+        let nt = manifests
+            .iter()
+            .find(|m| m.name == "native_token")
+            .expect("native_token manifest should be present");
+        assert_eq!(nt.trust, "GENESIS");
+        assert!(!nt.functions.is_empty(), "native_token should declare functions");
+
+        // A manifest is also fetchable by base58 contract id.
+        let cid = crate::contracts::genesis_id_b58("native_token").unwrap();
+        let m = w.contract_manifest(&cid).unwrap().expect("manifest by id");
+        assert_eq!(m.name, "native_token");
+        assert_eq!(m.trust, "GENESIS");
     }
 }

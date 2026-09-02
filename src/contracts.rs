@@ -87,6 +87,28 @@ pub fn b58(bytes: [u8; 32]) -> String {
     bs58::encode(bytes).into_string()
 }
 
+/// Base58 contract id for a genesis contract by name.
+pub fn genesis_id_b58(name: &str) -> Option<String> {
+    genesis_contracts()
+        .iter()
+        .find(|g| g.name == name)
+        .map(|g| b58(g.id.to_bytes()))
+}
+
+/// Resolve the trust tier from a base58-encoded contract id string.
+pub fn trust_tier_b58(contract_id: &str) -> String {
+    let bytes = bs58::decode(contract_id)
+        .into_vec()
+        .ok()
+        .and_then(|b| <[u8; 32]>::try_from(b).ok());
+    match bytes {
+        Some(arr) => ContractId::from_bytes(arr)
+            .map(|cid| trust_tier(&cid).to_string())
+            .unwrap_or_else(|_| "UNVERIFIED".to_string()),
+        None => "UNVERIFIED".to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

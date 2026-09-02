@@ -51,3 +51,20 @@ pub struct ContractView {
     pub contract_id: String,
     pub trust: String,
 }
+
+/// Display-friendly view of a contract's on-chain manifest (milestone 6).
+///
+/// `functions`/`capabilities`/`actions`/`parameters` are pre-formatted strings so the UI
+/// never touches raw manifest types.
+#[derive(Debug, Clone)]
+pub struct ContractManifestView {
+    pub name: String,
+    pub category: String,
+    pub description: String,
+    pub version: String,
+    pub trust: String,
+    pub functions: Vec<String>,
+    pub capabilities: Vec<String>,
+    pub actions: Vec<String>,
+    pub parameters: Vec<String>,
+}

@@ -7,7 +7,7 @@ use parking_lot::RwLock;
 use crate::commands::{CommandContext, CommandRegistry};
 use crate::config::InvarConfig;
 use crate::ui::onboarding::{self, OnboardingState};
-use crate::viewmodel::{CapView, ContractView, ViewModel};
+use crate::viewmodel::{CapView, ContractManifestView, ContractView, ViewModel};
 use crate::wallet_service::WalletService;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,6 +39,7 @@ pub struct InvarApp {
     caps: Vec<CapView>,
     addresses: Vec<String>,
     contracts: Vec<ContractView>,
+    contract_manifests: Vec<ContractManifestView>,
 }
 
 impl InvarApp {
@@ -56,6 +57,7 @@ impl InvarApp {
             caps: Vec::new(),
             addresses: Vec::new(),
             contracts: Vec::new(),
+            contract_manifests: Vec::new(),
         }
     }
 
@@ -98,6 +100,7 @@ impl InvarApp {
         let mut caps = Vec::new();
         let mut addresses = Vec::new();
         let mut contracts = Vec::new();
+        let mut contract_manifests = Vec::new();
 
         if let Some(w) = &self.wallet {
             match w.default_address() {
@@ -129,6 +132,7 @@ impl InvarApp {
             caps = w.held_capability_views().unwrap_or_default();
             addresses = w.addresses().unwrap_or_default();
             contracts = w.contract_views();
+            contract_manifests = w.genesis_manifest_views().unwrap_or_default();
         }
 
         self.summary = summary;
@@ -136,6 +140,7 @@ impl InvarApp {
         self.caps = caps;
         self.addresses = addresses;
         self.contracts = contracts;
+        self.contract_manifests = contract_manifests;
     }
 
     fn show_screen(&mut self, ui: &mut egui::Ui) {
@@ -160,7 +165,9 @@ impl InvarApp {
                 self.default_address.as_deref().unwrap_or(""),
                 &self.addresses,
             ),
-            NavScreen::Contracts => crate::ui::contracts::show(ui, &self.contracts),
+            NavScreen::Contracts => {
+                crate::ui::contracts::show(ui, &self.contracts, &self.contract_manifests)
+            }
             NavScreen::Console => {
                 ui.heading("Console");
                 ui.label("Type /help for commands. Run /verb <args> or a macro name.");
