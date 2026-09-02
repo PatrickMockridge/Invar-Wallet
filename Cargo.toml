@@ -46,6 +46,12 @@ rfd = "0.15"
 qrcode = "0.14"
 image = "0.25"
 
+[features]
+default = ["irc"]
+# IRC client plugin (talks to a darkirc daemon over standard IRC). Disable with
+# `--no-default-features` for a leaner wallet build.
+irc = []
+
 # The darkwow root's [patch.crates-io] is workspace-scoped and does NOT apply to Invar's
 # workspace, so it must be replicated here, pointing into the vendored tree. The halo2
 # fork is security-pinned (ZCash Orchard fix); the url fork adds P2P schemes.

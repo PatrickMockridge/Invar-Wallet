@@ -6,6 +6,7 @@ mod config;
 mod contracts;
 mod macros;
 mod plugin;
+mod plugins;
 mod ui;
 mod viewmodel;
 mod wallet_service;
@@ -33,6 +34,8 @@ fn main() -> eframe::Result<()> {
     registry.register_plugin(&CorePlugin);
     registry.register_plugin(&commands::wallet::WalletPlugin);
     registry.register_plugin(&commands::contracts::ContractsPlugin);
+    #[cfg(feature = "irc")]
+    registry.register_plugin(&plugins::irc::IrcPlugin);
 
     // Load user macros from ~/.config/invar/macros.toml (named verb sequences).
     if let Ok(home) = std::env::var("HOME") {
