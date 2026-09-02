@@ -42,6 +42,11 @@ pub struct CapView {
     pub status: String,
     pub leaf_position: u64,
     pub created_at_height: u64,
+    /// Block height the current status was set (broadcast height for Pending,
+    /// mined height for Processing/Spent).
+    pub status_height: Option<u64>,
+    /// Block height the nullifier was seen on-chain (Spent/Processing).
+    pub revoked_at_height: Option<u64>,
 }
 
 /// Display-friendly view of a contract (the nine genesis contracts in milestone 4).

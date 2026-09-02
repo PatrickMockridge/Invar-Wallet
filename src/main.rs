@@ -57,6 +57,9 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "Invar",
         options,
-        Box::new(move |_cc| Ok(Box::new(InvarApp::new(registry, vm)))),
+        Box::new(move |cc| {
+            crate::ui::theme::apply(&cc.egui_ctx);
+            Ok(Box::new(InvarApp::new(registry, vm)))
+        }),
     )
 }

@@ -89,11 +89,25 @@ pub fn show(ui: &mut egui::Ui, state: &mut OnboardingState) -> Option<InvarConfi
             ui.end_row();
 
             ui.label("keys.toml");
-            ui.text_edit_singleline(&mut state.keys_toml_path);
+            ui.horizontal(|ui| {
+                ui.text_edit_singleline(&mut state.keys_toml_path);
+                if ui.button("Browse…").clicked() {
+                    if let Some(p) = rfd::FileDialog::new().pick_file() {
+                        state.keys_toml_path = p.to_string_lossy().to_string();
+                    }
+                }
+            });
             ui.end_row();
 
             ui.label("Wallet DB");
-            ui.text_edit_singleline(&mut state.wallet_path);
+            ui.horizontal(|ui| {
+                ui.text_edit_singleline(&mut state.wallet_path);
+                if ui.button("Browse…").clicked() {
+                    if let Some(p) = rfd::FileDialog::new().save_file() {
+                        state.wallet_path = p.to_string_lossy().to_string();
+                    }
+                }
+            });
             ui.end_row();
         });
 

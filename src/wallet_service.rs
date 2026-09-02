@@ -248,6 +248,15 @@ impl WalletService {
         Ok(caps.into_iter().map(cap_view).collect())
     }
 
+    /// All held capabilities regardless of spend-state (for the activity view).
+    pub fn all_capability_views(&self) -> Result<Vec<CapView>, String> {
+        let dww = self.dww.as_ref().ok_or("wallet not open")?;
+        let caps = smol::block_on(dww.read())
+            .get_held_capabilities(None)
+            .map_err(|e| e.to_string())?;
+        Ok(caps.into_iter().map(cap_view).collect())
+    }
+
     /// All derived addresses (from the declared identity) as display strings.
     pub fn addresses(&self) -> Result<Vec<String>, String> {
         let dww = self.dww.as_ref().ok_or("wallet not open")?;
@@ -299,35 +308,30 @@ impl WalletService {
         Ok(out)
     }
 
-    /// Send native DRKW to a base58 address. Builds the ZK transfer, broadcasts it, and
-    /// marks the input capability PENDING. Returns the txid.
-    ///
-    /// NOTE: runs synchronously on the caller's thread (ZK proof generation is CPU-bound);
-    /// offloading to the background executor is a follow-up.
+    /// Send native DRKW (blocking — used by tests/scripts). Prefer [`Self::queue_send`].
     pub fn send_native(&self, amount: u64, recipient: &str) -> Result<String, String> {
         let dww = self.dww.as_ref().ok_or("wallet not open")?;
-
-        let mut seed = [0u8; 32];
-        use rand::RngCore;
-        rand::rngs::OsRng.fill_bytes(&mut seed);
-
-        let r = smol::block_on(dww.read());
-        let tx = smol::block_on(r.build_native_transfer(amount, recipient, seed))
-            .map_err(|e| e.to_string())?;
-
-        let mut output = Vec::new();
-        let txid = smol::block_on(r.broadcast_tx(&tx, &mut output, false, None, None))
-            .map_err(|e| e.to_string())?;
-        // §4.2.1: a failure to mark caps PENDING leaves them double-spendable.
-        if let Err(e) = r.mark_tx_exercise(&tx, &mut output) {
-            tracing::warn!("mark_tx_exercise failed after broadcast: {e}");
-        }
-
-        Ok(txid)
+        send_native_blocking(dww, amount, recipient)
     }
 
-    /// Invoke a contract action generically (manifest-driven). Builds, broadcasts, and marks
-    /// the exercised capability PENDING. Returns the txid. `params` is an optional JSON object.
+    /// Queue a native send on a background thread; the result is logged to the console.
+    pub fn queue_send(&self, amount: u64, recipient: String) {
+        let Some(dww) = self.dww.clone() else {
+            self.vm.write().console_log.push("wallet not open".to_string());
+            return;
+        };
+        let vm = self.vm.clone();
+        std::thread::spawn(move || {
+            let result = send_native_blocking(&dww, amount, &recipient);
+            let mut w = vm.write();
+            match result {
+                Ok(txid) => w.console_log.push(format!("sent: {txid}")),
+                Err(e) => w.console_log.push(format!("error: {e}")),
+            }
+        });
+    }
+
+    /// Invoke a contract action (blocking — used by tests/scripts). Prefer [`Self::queue_invoke`].
     pub fn invoke_contract(
         &self,
         contract_id_or_name: &str,
@@ -335,27 +339,78 @@ impl WalletService {
         params: Option<&str>,
     ) -> Result<String, String> {
         let dww = self.dww.as_ref().ok_or("wallet not open")?;
+        invoke_contract_blocking(dww, contract_id_or_name, function, params)
+    }
 
-        let r = smol::block_on(dww.read());
-        let tx = smol::block_on(r.invoke_contract(
-            contract_id_or_name,
-            function,
-            params,
-            vec![],
-            vec![],
-            None,
-        ))
+    /// Queue a contract invocation on a background thread; the result is logged to the console.
+    pub fn queue_invoke(
+        &self,
+        contract_id_or_name: String,
+        function: String,
+        params: Option<String>,
+    ) {
+        let Some(dww) = self.dww.clone() else {
+            self.vm.write().console_log.push("wallet not open".to_string());
+            return;
+        };
+        let vm = self.vm.clone();
+        std::thread::spawn(move || {
+            let result =
+                invoke_contract_blocking(&dww, &contract_id_or_name, &function, params.as_deref());
+            let mut w = vm.write();
+            match result {
+                Ok(txid) => w.console_log.push(format!("invoked: {txid}")),
+                Err(e) => w.console_log.push(format!("error: {e}")),
+            }
+        });
+    }
+}
+
+/// Build + broadcast a native transfer (the write path, run on a background thread).
+fn send_native_blocking(dww: &DwwPtr, amount: u64, recipient: &str) -> Result<String, String> {
+    let mut seed = [0u8; 32];
+    use rand::RngCore;
+    rand::rngs::OsRng.fill_bytes(&mut seed);
+
+    let r = smol::block_on(dww.read());
+    let tx = smol::block_on(r.build_native_transfer(amount, recipient, seed))
         .map_err(|e| e.to_string())?;
 
-        let mut output = Vec::new();
-        let txid = smol::block_on(r.broadcast_tx(&tx, &mut output, false, None, None))
-            .map_err(|e| e.to_string())?;
-        if let Err(e) = r.mark_tx_exercise(&tx, &mut output) {
-            tracing::warn!("mark_tx_exercise failed after broadcast: {e}");
-        }
-
-        Ok(txid)
+    let mut output = Vec::new();
+    let txid = smol::block_on(r.broadcast_tx(&tx, &mut output, false, None, None))
+        .map_err(|e| e.to_string())?;
+    // §4.2.1: a failure to mark caps PENDING leaves them double-spendable.
+    if let Err(e) = r.mark_tx_exercise(&tx, &mut output) {
+        tracing::warn!("mark_tx_exercise failed after broadcast: {e}");
     }
+    Ok(txid)
+}
+
+/// Build + broadcast a generic contract invocation (run on a background thread).
+fn invoke_contract_blocking(
+    dww: &DwwPtr,
+    contract_id_or_name: &str,
+    function: &str,
+    params: Option<&str>,
+) -> Result<String, String> {
+    let r = smol::block_on(dww.read());
+    let tx = smol::block_on(r.invoke_contract(
+        contract_id_or_name,
+        function,
+        params,
+        vec![],
+        vec![],
+        None,
+    ))
+    .map_err(|e| e.to_string())?;
+
+    let mut output = Vec::new();
+    let txid = smol::block_on(r.broadcast_tx(&tx, &mut output, false, None, None))
+        .map_err(|e| e.to_string())?;
+    if let Err(e) = r.mark_tx_exercise(&tx, &mut output) {
+        tracing::warn!("mark_tx_exercise failed after broadcast: {e}");
+    }
+    Ok(txid)
 }
 
 /// Build a display-friendly view from a raw contract manifest.
@@ -442,6 +497,8 @@ fn cap_view(cap: dwow_wallet::walletdb::CapRecord) -> CapView {
             .unwrap_or_else(|| "unspent".to_string()),
         leaf_position: cap.leaf_position,
         created_at_height: cap.created_at_height.get(),
+        status_height: cap.status_height.map(|h| h.get()),
+        revoked_at_height: cap.revoked_at_height.map(|h| h.get()),
     }
 }
 
@@ -574,5 +631,12 @@ mod tests {
         // No synced chain → no DRKW capabilities → the write path errors cleanly.
         let result = w.send_native(100, "1invalid");
         assert!(result.is_err(), "should error without DRKW capabilities");
+    }
+
+    #[test]
+    fn all_capability_views_empty_on_fresh_wallet() {
+        let cfg = test_config("allcaps", vec![]);
+        let w = WalletService::open(&cfg, vm()).unwrap();
+        assert!(w.all_capability_views().unwrap().is_empty());
     }
 }

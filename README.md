@@ -39,12 +39,49 @@ For local development without git, you can instead symlink an existing checkout:
 ln -s /path/to/darkwow vendor/darkwow
 ```
 
+## Extending Invar
+
+Invar's console is the extensibility core: plugins and macros begin life as `/verb` commands
+and graduate into UI panels.
+
+### Add a verb / plugin
+
+Plugins implement the `Plugin` trait (`src/plugin.rs`) and register `Command` verbs
+(`src/commands/mod.rs`). A command handler receives a `CommandContext` with read-only wallet
+access. Register your plugin in `src/main.rs`:
+
+```rust
+pub struct MyPlugin;
+impl Plugin for MyPlugin {
+    fn name(&self) -> &'static str { "myplugin" }
+    fn commands(&self) -> Vec<Command> {
+        vec![Command { name: "ping", help: "reply pong", handler: ping }]
+    }
+}
+fn ping(ctx: &mut CommandContext, _args: &[String]) -> CommandResult {
+    ctx.log("pong"); Ok(())
+}
+```
+
+Commands are headless (no `egui` import), so they're unit-testable and shared by the console
+and GUI buttons.
+
+### Macros
+
+Named sequences of verbs, defined in `~/.config/invar/macros.toml`:
+
+```toml
+[macros]
+sweep = ["/scan", "/balance"]
+```
+
+Invoke as `/sweep` (or bare `sweep`) from the console.
+
+### Retheme
+
+Edit `src/ui/theme.rs` (`apply`) — every screen inherits the palette. This is the single
+visual-customisation point.
+
 ## License
 
 AGPL-3.0-only (inherited from the embedded `dwow_wallet` crate). See [LICENSE](LICENSE).
-
-## Extending Invar
-
-See the `src/commands/` and `src/plugin.rs` — plugins are native Rust modules that register
-`/verb` commands (and later, UI panels). Macros are TOML `[macros]` entries: named sequences
-of verbs.

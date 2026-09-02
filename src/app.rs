@@ -20,6 +20,7 @@ enum Screen {
 enum NavScreen {
     Overview,
     Capabilities,
+    Activity,
     Addresses,
     Contracts,
     Send,
@@ -38,6 +39,7 @@ pub struct InvarApp {
     summary: Vec<String>,
     default_address: Option<String>,
     caps: Vec<CapView>,
+    activity: Vec<CapView>,
     addresses: Vec<String>,
     contracts: Vec<ContractView>,
     contract_manifests: Vec<ContractManifestView>,
@@ -58,6 +60,7 @@ impl InvarApp {
             summary: Vec::new(),
             default_address: None,
             caps: Vec::new(),
+            activity: Vec::new(),
             addresses: Vec::new(),
             contracts: Vec::new(),
             contract_manifests: Vec::new(),
@@ -103,6 +106,7 @@ impl InvarApp {
         let mut summary = Vec::new();
         let mut default_address = None;
         let mut caps = Vec::new();
+        let mut activity = Vec::new();
         let mut addresses = Vec::new();
         let mut contracts = Vec::new();
         let mut contract_manifests = Vec::new();
@@ -135,6 +139,7 @@ impl InvarApp {
                 Err(e) => summary.push(format!("native balance: {e}")),
             }
             caps = w.held_capability_views().unwrap_or_default();
+            activity = w.all_capability_views().unwrap_or_default();
             addresses = w.addresses().unwrap_or_default();
             contracts = w.contract_views();
             contract_manifests = w.genesis_manifest_views().unwrap_or_default();
@@ -143,6 +148,7 @@ impl InvarApp {
         self.summary = summary;
         self.default_address = default_address;
         self.caps = caps;
+        self.activity = activity;
         self.addresses = addresses;
         self.contracts = contracts;
         self.contract_manifests = contract_manifests;
@@ -165,6 +171,7 @@ impl InvarApp {
                 }
             }
             NavScreen::Capabilities => crate::ui::capabilities::show(ui, &self.caps),
+            NavScreen::Activity => crate::ui::activity::show(ui, &self.activity),
             NavScreen::Addresses => crate::ui::addresses::show(
                 ui,
                 self.default_address.as_deref().unwrap_or(""),
@@ -192,18 +199,22 @@ impl InvarApp {
                 if ui.button("Send").clicked() {
                     let amount = self.send_amount.trim().parse::<u64>();
                     let recipient = self.send_recipient.trim().to_string();
-                    let result = match amount {
-                        Ok(a) => self
-                            .wallet
-                            .as_ref()
-                            .map(|w| w.send_native(a, &recipient))
-                            .unwrap_or_else(|| Err("wallet not open".to_string())),
-                        Err(e) => Err(format!("invalid amount: {e}")),
-                    };
-                    let mut vm = self.vm.write();
-                    match result {
-                        Ok(txid) => vm.console_log.push(format!("sent: {txid}")),
-                        Err(e) => vm.console_log.push(format!("error: {e}")),
+                    match amount {
+                        Ok(a) => match self.wallet.clone() {
+                            Some(w) => {
+                                w.queue_send(a, recipient);
+                                self.vm.write().console_log.push("send queued…".to_string());
+                            }
+                            None => {
+                                self.vm.write().console_log.push("wallet not open".to_string());
+                            }
+                        },
+                        Err(e) => {
+                            self.vm
+                                .write()
+                                .console_log
+                                .push(format!("invalid amount: {e}"));
+                        }
                     }
                 }
             }
@@ -267,6 +278,7 @@ impl eframe::App for InvarApp {
                             NavScreen::Capabilities,
                             "Capabilities",
                         );
+                        ui.selectable_value(&mut self.nav, NavScreen::Activity, "Activity");
                         ui.selectable_value(&mut self.nav, NavScreen::Addresses, "Addresses");
                         ui.selectable_value(&mut self.nav, NavScreen::Contracts, "Contracts");
                         ui.selectable_value(&mut self.nav, NavScreen::Send, "Send");

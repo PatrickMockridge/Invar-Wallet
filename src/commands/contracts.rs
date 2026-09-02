@@ -91,15 +91,12 @@ fn invoke(ctx: &mut CommandContext, args: &[String]) -> CommandResult {
         None
     };
 
-    let result = ctx
-        .wallet
-        .as_ref()
-        .map(|w| w.invoke_contract(&cid, &func, params.as_deref()))
-        .unwrap_or_else(|| Err("wallet not open".to_string()));
-
-    match result {
-        Ok(txid) => ctx.log(format!("invoked: {txid}")),
-        Err(e) => ctx.log(format!("error: {e}")),
+    match ctx.wallet.clone() {
+        Some(w) => {
+            w.queue_invoke(cid, func, params);
+            ctx.log("invoke queued…");
+        }
+        None => ctx.log("wallet not open"),
     }
     Ok(())
 }

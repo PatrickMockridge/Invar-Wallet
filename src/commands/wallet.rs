@@ -19,7 +19,7 @@ impl Plugin for WalletPlugin {
             },
             Command {
                 name: "caps",
-                help: "list held capabilities",
+                help: "list held capabilities (--all includes spent)",
                 handler: caps,
             },
             Command {
@@ -63,12 +63,18 @@ fn balance(ctx: &mut CommandContext, _args: &[String]) -> CommandResult {
     Ok(())
 }
 
-fn caps(ctx: &mut CommandContext, _args: &[String]) -> CommandResult {
+fn caps(ctx: &mut CommandContext, args: &[String]) -> CommandResult {
+    let all = args.iter().any(|a| a == "--all");
     let Some(w) = ctx.wallet.as_ref() else {
         ctx.log("wallet not open");
         return Ok(());
     };
-    match w.held_capability_views() {
+    let result = if all {
+        w.all_capability_views()
+    } else {
+        w.held_capability_views()
+    };
+    match result {
         Ok(caps) if caps.is_empty() => ctx.log("no held capabilities"),
         Ok(caps) => {
             for c in caps {
@@ -146,15 +152,12 @@ fn send(ctx: &mut CommandContext, args: &[String]) -> CommandResult {
         }
     };
 
-    let result = ctx
-        .wallet
-        .as_ref()
-        .map(|w| w.send_native(amount, &recipient))
-        .unwrap_or_else(|| Err("wallet not open".to_string()));
-
-    match result {
-        Ok(txid) => ctx.log(format!("sent: {txid}")),
-        Err(e) => ctx.log(format!("error: {e}")),
+    match ctx.wallet.clone() {
+        Some(w) => {
+            w.queue_send(amount, recipient);
+            ctx.log("send queued…");
+        }
+        None => ctx.log("wallet not open"),
     }
     Ok(())
 }
